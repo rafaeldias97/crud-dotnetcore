@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using AutoMapper;
 using CRUDMongoDb.Context;
@@ -16,6 +17,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using Swashbuckle.AspNetCore.Swagger;
 
 namespace CRUDMongoDb
 {
@@ -50,38 +53,53 @@ namespace CRUDMongoDb
                     .Configure(tokenConfigurations);
             services.AddSingleton(tokenConfigurations);
 
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidateAudience = true,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        ValidIssuer = tokenConfigurations.Issuer,
+                        ValidAudience = tokenConfigurations.Audience,
+                        IssuerSigningKey = new SymmetricSecurityKey(
+                            Encoding.UTF8.GetBytes(Configuration["SecurityKey"]))
+                    };
 
-            services.AddAuthentication(authOptions =>
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnAuthenticationFailed = context =>
+                        {
+                            Console.WriteLine("Token Inválido...: " + context.Exception.Message);
+                            return Task.CompletedTask;
+                        },
+                        OnTokenValidated = context =>
+                        {
+                            Console.WriteLine("Token Válido...: " + context.SecurityToken);
+                            return Task.CompletedTask;
+                        }
+                    };
+                });
+
+            services.AddSwaggerGen(c =>
             {
-                authOptions.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                authOptions.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            }).AddJwtBearer(bearerOptions =>
-            {
-                var paramsValidation = bearerOptions.TokenValidationParameters;
-                paramsValidation.IssuerSigningKey = signingConfigurations.Key;
-                paramsValidation.ValidAudience = tokenConfigurations.Audience;
-                paramsValidation.ValidIssuer = tokenConfigurations.Issuer;
-
-                // Valida a assinatura de um token recebido
-                paramsValidation.ValidateIssuerSigningKey = true;
-
-                // Verifica se um token recebido ainda é válido
-                paramsValidation.ValidateLifetime = true;
-
-                // Tempo de tolerância para a expiração de um token (utilizado
-                // caso haja problemas de sincronismo de horário entre diferentes
-                // computadores envolvidos no processo de comunicação)
-                paramsValidation.ClockSkew = TimeSpan.Zero;
+                c.SwaggerDoc("v1", new Info
+                {
+                    Version = "v1",
+                    Title = "CRUD JWT MongoDB",
+                    Description = "API Stream Friends",
+                    TermsOfService = "None",
+                    Contact = new Contact
+                    {
+                        Name = "Rafael Dias",
+                        Email = string.Empty,
+                        Url = "https://github.com/rafaeldias97"
+                    }
+                });
             });
 
-            // Ativa o uso do token como forma de autorizar o acesso
-            // a recursos deste projeto
-            services.AddAuthorization(auth =>
-            {
-                auth.AddPolicy("Bearer", new AuthorizationPolicyBuilder()
-                    .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
-                    .RequireAuthenticatedUser().Build());
-            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -98,6 +116,7 @@ namespace CRUDMongoDb
 
             app.UseSwaggerDocumentation();
             app.UseHttpsRedirection();
+            app.UseAuthentication();
             app.UseCors(c =>
             {
                 c.AllowAnyHeader();

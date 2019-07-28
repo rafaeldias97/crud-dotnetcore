@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Swashbuckle.AspNetCore.Swagger;
 using Swashbuckle.AspNetCore.SwaggerUI;
+using System.Collections.Generic;
 
 namespace CRUDMongoDb.Swagger
 {
@@ -11,7 +12,13 @@ namespace CRUDMongoDb.Swagger
         {
             services.AddSwaggerGen(c =>
             {
-                c.SwaggerDoc("v1.0", new Info { Title = "CRUD JWT MongoDb", Version = "v1.0" });
+                c.SwaggerDoc("v1.0", new Info { Title = "CRUD JWT MongoDB", Version = "v1.0" });
+
+                // Swagger 2.+ support
+                var security = new Dictionary<string, IEnumerable<string>>
+                {
+                    {"Bearer", new string[] { }},
+                };
 
                 c.AddSecurityDefinition("Bearer", new ApiKeyScheme
                 {
@@ -20,6 +27,7 @@ namespace CRUDMongoDb.Swagger
                     In = "header",
                     Type = "apiKey"
                 });
+                c.AddSecurityRequirement(security);
             });
 
             return services;
@@ -32,10 +40,12 @@ namespace CRUDMongoDb.Swagger
             {
                 c.SwaggerEndpoint("/swagger/v1.0/swagger.json", "Versioned API v1.0");
 
+                c.DocumentTitle = "APITubeFriends";
                 c.DocExpansion(DocExpansion.None);
             });
 
             return app;
         }
     }
+
 }

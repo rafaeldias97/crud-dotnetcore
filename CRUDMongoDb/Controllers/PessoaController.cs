@@ -4,14 +4,16 @@ using CRUDMongoDb.Context;
 using CRUDMongoDb.JWT;
 using CRUDMongoDb.Models;
 using CRUDMongoDb.VM;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Principal;
+using System.Text;
 
 namespace CRUDMongoDb.Controllers
 {
@@ -21,13 +23,16 @@ namespace CRUDMongoDb.Controllers
     {
         private readonly MongoContext dbContext = new MongoContext();
         private IMapper mapper;
+        public IConfiguration Configuration { get; }
 
-        public PessoaController(IMapper _mapper)
+        public PessoaController(IMapper _mapper, IConfiguration _Configuration)
         {
             mapper = _mapper;
+            Configuration = _Configuration;
         }
         // GET api/values/5
         [HttpGet]
+        [Authorize()]
         public IActionResult Get()
         {
             var entity = dbContext.pessoas.Find(x => true).ToList();
@@ -39,40 +44,42 @@ namespace CRUDMongoDb.Controllers
         public IActionResult Autenticar([FromBody] PessoaLoginVM pessoa, [FromServices] SigningConfigurations signingConfigurations,
             [FromServices] TokenConfigurations tokenConfigurations)
         {
-            var res = dbContext.pessoas.Find(x => x.email == pessoa.email 
+            var conexao = dbContext.pessoas.Find(x => x.email == pessoa.email
                             && x.senha == pessoa.senha).FirstOrDefault();
-            if (res.Id != null)
+            if (conexao != null)
             {
-                ClaimsIdentity identity = new ClaimsIdentity(
-                    new GenericIdentity(res.Id.ToString(), "Login"),
-                    new[] {
-                        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                        new Claim(JwtRegisteredClaimNames.UniqueName, res.Id.ToString()),
-                        new Claim(JwtRegisteredClaimNames.Email, res.email),
-                        new Claim(JwtRegisteredClaimNames.Birthdate, res.dataNascimento.ToString())
-                    }
-                ); ;
+                var claims = new[] {
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                    new Claim(JwtRegisteredClaimNames.UniqueName, conexao.Id.ToString()),
+                    new Claim(JwtRegisteredClaimNames.Email, conexao.email),
+                    new Claim(JwtRegisteredClaimNames.Birthdate, conexao.dataNascimento.ToString())
+                };
 
-                DateTime dataCriacao = DateTime.Now;
-                DateTime dataExpiracao = dataCriacao +
-                    TimeSpan.FromSeconds(tokenConfigurations.Seconds);
+                var key = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(Configuration["SecurityKey"]));
 
-                var handler = new JwtSecurityTokenHandler();
-                var securityToken = handler.CreateToken(new SecurityTokenDescriptor
+                var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+                var token = new JwtSecurityToken(
+                    issuer: tokenConfigurations.Issuer,
+                    audience: tokenConfigurations.Audience,
+                    claims: claims,
+                    expires: DateTime.Now.AddMinutes(30),
+                    signingCredentials: creds
+                    );
+
+                return Ok(new
                 {
-                    Issuer = tokenConfigurations.Issuer,
-                    Audience = tokenConfigurations.Audience,
-                    SigningCredentials = signingConfigurations.SigningCredentials,
-                    Subject = identity,
-                    NotBefore = dataCriacao,
-                    Expires = dataExpiracao
+                    token = new JwtSecurityTokenHandler().WriteToken(token)
                 });
-                var token = handler.WriteToken(securityToken);
-                return Ok(token);
-            } else
-            {
-                return BadRequest(new { ErrorMessage = "Usuario Inválido" });
+
             }
+            return BadRequest(new
+            {
+                ErrorMessage = "Credenciais Inválidas...",
+                Code = 401
+            });
+
         }
 
         // POST api/values
@@ -85,6 +92,7 @@ namespace CRUDMongoDb.Controllers
 
         // PUT api/values/5
         [HttpPut]
+        [Authorize()]
         public IActionResult Put([FromBody] PessoaVM pessoa)
         {
             var res = dbContext.pessoas.Find(x => x.Id == pessoa.Id).FirstOrDefault();
@@ -97,6 +105,7 @@ namespace CRUDMongoDb.Controllers
 
         // DELETE api/values/5
         [HttpDelete("{id}")]
+        [Authorize()]
         public void Delete(Guid id)
         {
             dbContext.pessoas.DeleteOne(x => x.Id == id);
