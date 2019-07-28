@@ -5,7 +5,7 @@ EXPOSE 443
 
 FROM mcr.microsoft.com/dotnet/core/sdk:2.1-stretch AS build
 WORKDIR /src
-COPY . .
+COPY ./CRUDMongoDb .
 RUN dotnet restore "CRUDMongoDb.csproj"
 RUN dotnet build "CRUDMongoDb.csproj" -c Release -o /app
 
